@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบเช็คชื่อ รับเสื้อ และคืนซอง - ชมรมบัณฑิตอาสา</title>
+    <!-- Tailwind CSS สำหรับจัดสไตล์ -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts (Prompt) -->
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Prompt', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-5xl mx-auto bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+        <!-- ส่วนหัว -->
+        <div class="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-6">
+            <h1 class="text-2xl font-bold">📋 ระบบเช็คชื่อ รับเสื้อ และคืนซอง - บัณฑิตอาสา</h1>
+            <p class="text-emerald-100 text-sm mt-1">บันทึกรหัสประจำตัวนักศึกษา, ไซส์เสื้อ, การรับเสื้อ และสถานะการคืนซอง</p>
+        </div>
+
+        <!-- ฟอร์มเพิ่มข้อมูล -->
+        <div class="p-6 bg-emerald-50/50 border-b border-gray-100">
+            <h2 class="text-lg font-semibold text-gray-700 mb-3">➕ เพิ่มรายชื่อสมาชิกใหม่</h2>
+            <form id="memberForm" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <input type="text" id="stdId" placeholder="รหัสนักศึกษา" required 
+                    class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none">
+                <input type="text" id="stdName" placeholder="ชื่อ - นามสกุล" required 
+                    class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none">
+                <select id="stdSize" required class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
+                    <option value="" disabled selected>-- เลือกไซส์เสื้อ --</option>
+                    <option value="SS">SS</option>
+                    <option value="S">S</option>
+                    <option value="M">M</option>
+                    <option value="L">L</option>
+                    <option value="XL">XL</option>
+                    <option value="2XL">2XL</option>
+                    <option value="3XL">3XL</option>
+                </select>
+                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-4 rounded-lg transition shadow-sm">
+                    บันทึกข้อมูล
+                </button>
+            </form>
+        </div>
+
+        <!-- ส่วนค้นหาและตารางข้อมูล -->
+        <div class="p-6">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-3">
+                <h2 class="text-lg font-semibold text-gray-700">👥 รายชื่อสมาชิกทั้งหมด</h2>
+                <input type="text" id="searchInput" placeholder="🔍 ค้นหา (รหัส หรือ ชื่อ)..." 
+                    class="w-full md:w-72 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm">
+            </div>
+
+            <div class="overflow-x-auto rounded-lg border border-gray-200">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-100 text-gray-600 text-sm uppercase tracking-wider">
+                            <th class="py-3 px-4">รหัสนศ.</th>
+                            <th class="py-3 px-4">ชื่อ - นามสกุล</th>
+                            <th class="py-3 px-4 text-center">ไซส์เสื้อ</th>
+                            <th class="py-3 px-4 text-center">มารับเสื้อแล้ว</th>
+                            <th class="py-3 px-4 text-center">คืนซองแล้ว</th>
+                            <th class="py-3 px-4 text-center">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="memberTableBody" class="divide-y divide-gray-200 text-sm">
+                        <!-- ข้อมูลจะถูกแทรกลงตรงนี้ด้วย JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="emptyState" class="text-center py-8 text-gray-400 hidden">
+                ยังไม่มีข้อมูลสมาชิกในระบบ
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // โหลดข้อมูลจาก LocalStorage (ถ้ามี)
+        let members = JSON.parse(localStorage.getItem('bandit_members_v2')) || [
+            { id: '67123456', name: 'นายสมชาย ใจดี', size: 'M', receivedShirt: true, returned: true },
+            { id: '67123457', name: 'นางสาวสมหญิง รักเรียน', size: 'S', receivedShirt: false, returned: false }
+        ];
+
+        const form = document.getElementById('memberForm');
+        const tableBody = document.getElementById('memberTableBody');
+        const searchInput = document.getElementById('searchInput');
+        const emptyState = document.getElementById('emptyState');
+
+        // ฟังก์ชันบันทึกข้อมูลลง LocalStorage
+        function saveData() {
+            localStorage.setItem('bandit_members_v2', JSON.stringify(members));
+        }
+
+        // ฟังก์ชันแสดงผลตาราง
+        function renderTable(filterText = '') {
+            tableBody.innerHTML = '';
+            
+            const filtered = members.filter(m => 
+                m.id.toLowerCase().includes(filterText.toLowerCase()) || 
+                m.name.toLowerCase().includes(filterText.toLowerCase())
+            );
+
+            if (filtered.length === 0) {
+                emptyState.classList.remove('hidden');
+                return;
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            filtered.forEach((member) => {
+                const realIndex = members.findIndex(m => m.id === member.id);
+
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50 transition';
+                row.innerHTML = `
+                    <td class="py-3 px-4 font-medium text-gray-900">${member.id}</td>
+                    <td class="py-3 px-4 text-gray-700">${member.name}</td>
+                    <td class="py-3 px-4 text-center">
+                        <span class="bg-gray-100 text-gray-800 px-2.5 py-1 rounded-md text-xs font-semibold">${member.size}</span>
+                    </td>
+                    <!-- เช็คสถานะรับเสื้อ -->
+                    <td class="py-3 px-4 text-center">
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="checkbox" ${member.receivedShirt ? 'checked' : ''} 
+                                onchange="toggleReceiveShirt(${realIndex})" 
+                                class="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300 cursor-pointer">
+                            <span class="ml-2 text-xs font-medium ${member.receivedShirt ? 'text-indigo-600 font-semibold' : 'text-gray-500'}">
+                                ${member.receivedShirt ? 'รับแล้ว' : 'ยังไม่รับ'}
+                            </span>
+                        </label>
+                    </td>
+                    <!-- เช็คสถานะคืนซอง -->
+                    <td class="py-3 px-4 text-center">
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="checkbox" ${member.returned ? 'checked' : ''} 
+                                onchange="toggleReturn(${realIndex})" 
+                                class="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500 border-gray-300 cursor-pointer">
+                            <span class="ml-2 text-xs font-medium ${member.returned ? 'text-emerald-600 font-semibold' : 'text-gray-500'}">
+                                ${member.returned ? 'คืนแล้ว' : 'ยังไม่คืน'}
+                            </span>
+                        </label>
+                    </td>
+                    <td class="py-3 px-4 text-center">
+                        <button onclick="deleteMember(${realIndex})" class="text-red-500 hover:text-red-700 text-xs bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded transition">
+                            ลบ
+                        </button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // เพิ่มข้อมูลใหม่
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const id = document.getElementById('stdId').value.trim();
+            const name = document.getElementById('stdName').value.trim();
+            const size = document.getElementById('stdSize').value;
+
+            if (members.some(m => m.id === id)) {
+                alert('รหัสนักศึกษานี้มีอยู่ในระบบแล้ว!');
+                return;
+            }
+
+            members.push({ id, name, size, receivedShirt: false, returned: false });
+            saveData();
+            renderTable(searchInput.value);
+            form.reset();
+        });
+
+        // สลับสถานะการรับเสื้อ
+        window.toggleReceiveShirt = function(index) {
+            members[index].receivedShirt = !members[index].receivedShirt;
+            saveData();
+            renderTable(searchInput.value);
+        }
+
+        // สลับสถานะการคืนซอง
+        window.toggleReturn = function(index) {
+            members[index].returned = !members[index].returned;
+            saveData();
+            renderTable(searchInput.value);
+        }
+
+        // ลบสมาชิก
+        window.deleteMember = function(index) {
+            if (confirm(`คุณต้องการลบข้อมูลของ ${members[index].name} หรือไม่?`)) {
+                members.splice(index, 1);
+                saveData();
+                renderTable(searchInput.value);
+            }
+        }
+
+        // ค้นหาแบบเรียลไทม์
+        searchInput.addEventListener('input', (e) => {
+            renderTable(e.target.value);
+        });
+
+        // โหลดแสดงผลครั้งแรก
+        renderTable();
+    </script>
+</body>
+</html>
