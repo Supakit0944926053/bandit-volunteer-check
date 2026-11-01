@@ -16,14 +16,22 @@
 
     <div class="max-w-6xl mx-auto bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
         <!-- ส่วนหัว -->
-        <div class="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-6">
-            <h1 class="text-2xl font-bold">📋 ระบบเช็คชื่อ บัณฑิตอาสา</h1>
-            <p class="text-emerald-100 text-sm mt-1">บันทึกรหัสประจำตัวนักศึกษา, ไซส์เสื้อ, สถานะการชำระเงิน, การรับเสื้อ และการคืนซอง</p>
+        <div class="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold">📋 ระบบเช็คชื่อ บัณฑิตอาสา</h1>
+                <p class="text-emerald-100 text-sm mt-1">เชื่อมต่อข้อมูลแบบเรียลไทม์กับ Google Sheets</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <span id="syncStatus" class="text-xs bg-emerald-800 px-3 py-1.5 rounded-full text-emerald-100">🟢 พร้อมใช้งาน</span>
+                <button onclick="openBulkModal()" class="bg-white text-emerald-700 hover:bg-emerald-50 font-medium px-4 py-2 rounded-lg text-sm shadow transition flex items-center gap-2">
+                    📥 นำเข้าหลายคน
+                </button>
+            </div>
         </div>
 
-        <!-- ฟอร์มเพิ่มข้อมูล (รวมช่องเลือกจ่ายเงินแล้ว) -->
+        <!-- ฟอร์มเพิ่มข้อมูลทีละคน -->
         <div class="p-6 bg-emerald-50/50 border-b border-gray-100">
-            <h2 class="text-lg font-semibold text-gray-700 mb-3">➕ เพิ่มรายชื่อสมาชิกใหม่</h2>
+            <h2 class="text-lg font-semibold text-gray-700 mb-3">➕ เพิ่มรายชื่อสมาชิกใหม่ (ทีละคน)</h2>
             <form id="memberForm" class="grid grid-cols-1 md:grid-cols-5 gap-3">
                 <input type="text" id="stdId" placeholder="รหัสนักศึกษา" required 
                     class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm">
@@ -39,12 +47,12 @@
                     <option value="2XL">2XL</option>
                     <option value="3XL">3XL</option>
                 </select>
-                <!-- เพิ่มตัวเลือกสถานะการจ่ายเงินตอนกรอกฟอร์ม -->
                 <select id="stdPaid" class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-sm">
-                    <option value="false">สถานะ: ยังไม่จ่าย</option>
-                    <option value="true">สถานะ: จ่ายแล้ว</option>
+                    <option value="paid" selected>สถานะ: จ่ายแล้ว</option>
+                    <option value="half">สถานะ: จ่ายครึ่ง</option>
+                    <option value="unpaid">สถานะ: ยังไม่จ่าย</option>
                 </select>
-                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-4 rounded-lg transition shadow-sm text-sm">
+                <button type="submit" id="submitBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-4 rounded-lg transition shadow-sm text-sm">
                     บันทึกข้อมูล
                 </button>
             </form>
@@ -72,9 +80,12 @@
                         </tr>
                     </thead>
                     <tbody id="memberTableBody" class="divide-y divide-gray-200 text-sm">
-                        <!-- ข้อมูลจะถูกแทรกลงตรงนี้ด้วย JavaScript -->
+                        <!-- โหลดข้อมูล -->
                     </tbody>
                 </table>
+            </div>
+            <div id="loadingState" class="text-center py-10 text-gray-500">
+                ⏳ กำลังโหลดข้อมูลจาก Google Sheets...
             </div>
             <div id="emptyState" class="text-center py-8 text-gray-400 hidden">
                 ยังไม่มีข้อมูลสมาชิกในระบบ
@@ -82,24 +93,79 @@
         </div>
     </div>
 
+    <!-- Modal นำเข้าข้อมูลหลายคน -->
+    <div id="bulkModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl">
+            <h3 class="text-lg font-bold text-gray-800 mb-2">📥 นำเข้าข้อมูลหลายคนพร้อมกัน</h3>
+            <p class="text-xs text-gray-500 mb-3">
+                วางข้อมูลจาก Excel ได้เลย (1 บรรทัดต่อ 1 คน)<br>
+                *ถ้ามีคำว่า <code class="bg-emerald-50 text-emerald-600 px-1 rounded font-bold">จ่ายค่าเสื้อครึ่ง</code> ระบบจะตั้งเป็น "จ่ายครึ่ง" ให้อัตโนมัติ*
+            </p>
+            <textarea id="bulkTextarea" rows="8" placeholder="6821108024	นางสาวรจนา ล้อมคำ	L&#10;6921310007	นางสาวอาทิมา คำผ่อง	2XL	75	จ่ายค่าเสื้อครึ่ง" 
+                class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm font-mono"></textarea>
+            <div class="flex justify-end gap-2 mt-4">
+                <button onclick="closeBulkModal()" class="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition">ยกเลิก</button>
+                <button onclick="processBulkImport()" id="bulkSubmitBtn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition">นำเข้าข้อมูล</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        // โหลดข้อมูลจาก LocalStorage (ถ้ามี)
-        let members = JSON.parse(localStorage.getItem('bandit_members_v4')) || [
-            { id: '67123456', name: 'นายสมชาย ใจดี', size: 'M', paid: true, receivedShirt: true, returned: true },
-            { id: '67123457', name: 'นางสาวสมหญิง รักเรียน', size: 'S', paid: false, receivedShirt: false, returned: false }
-        ];
+        const API_URL = "https://script.google.com/macros/s/AKfycbwVukvAwKNFkMjS6PKCqauuxzEpWgwBFJ22YtXXd24h4iK2Imu_siZ5Ct0oyMAdpLZ9pQ/exec";
+        let members = [];
 
         const form = document.getElementById('memberForm');
         const tableBody = document.getElementById('memberTableBody');
         const searchInput = document.getElementById('searchInput');
         const emptyState = document.getElementById('emptyState');
+        const loadingState = document.getElementById('loadingState');
+        const syncStatus = document.getElementById('syncStatus');
+        const bulkModal = document.getElementById('bulkModal');
+        const bulkTextarea = document.getElementById('bulkTextarea');
 
-        // ฟังก์ชันบันทึกข้อมูลลง LocalStorage
-        function saveData() {
-            localStorage.setItem('bandit_members_v4', JSON.stringify(members));
+        // โหลดข้อมูลจาก Google Sheets ตอนเปิดเว็บ
+        async function fetchMembers() {
+            loadingState.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+            syncStatus.textContent = "⏳ กำลังซิงค์...";
+            try {
+                const response = await fetch(API_URL);
+                const data = await response.json();
+                members = data.map(m => ({
+                    id: String(m.id || ''),
+                    name: String(m.name || ''),
+                    size: String(m.size || 'M'),
+                    paid: String(m.paid || 'paid'),
+                    receivedShirt: String(m.receivedShirt) === 'true',
+                    returned: String(m.returned) === 'true'
+                }));
+                loadingState.classList.add('hidden');
+                syncStatus.textContent = "🟢 เชื่อมต่อแล้ว";
+                renderTable(searchInput.value);
+            } catch (error) {
+                console.error(error);
+                loadingState.textContent = "❌ ไม่สามารถโหลดข้อมูลได้ กรุณารีเฟรชหน้าจอ";
+                syncStatus.textContent = "🔴 ขัดข้อง";
+            }
         }
 
-        // ฟังก์ชันแสดงผลตาราง
+        // บันทึกข้อมูลทั้งหมดกลับขึ้น Google Sheets
+        async function syncToSheets() {
+            syncStatus.textContent = "💾 กำลังบันทึก...";
+            try {
+                await fetch(API_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(members)
+                });
+                syncStatus.textContent = "🟢 บันทึกแล้ว";
+            } catch (error) {
+                console.error(error);
+                syncStatus.textContent = "🔴 บันทึกไม่สำเร็จ";
+            }
+        }
+
         function renderTable(filterText = '') {
             tableBody.innerHTML = '';
             
@@ -118,6 +184,15 @@
             filtered.forEach((member) => {
                 const realIndex = members.findIndex(m => m.id === member.id);
 
+                let paidBadge = '';
+                if (member.paid === 'paid') {
+                    paidBadge = `<button onclick="cyclePaid(${realIndex})" class="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-semibold hover:bg-emerald-200 transition">จ่ายแล้ว</button>`;
+                } else if (member.paid === 'half') {
+                    paidBadge = `<button onclick="cyclePaid(${realIndex})" class="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-semibold hover:bg-amber-200 transition">ยังจ่ายไม่ครบ (จ่ายครึ่ง)</button>`;
+                } else {
+                    paidBadge = `<button onclick="cyclePaid(${realIndex})" class="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-semibold hover:bg-gray-200 transition">ยังไม่จ่าย</button>`;
+                }
+
                 const row = document.createElement('tr');
                 row.className = 'hover:bg-gray-50 transition';
                 row.innerHTML = `
@@ -126,33 +201,21 @@
                     <td class="py-3 px-4 text-center">
                         <span class="bg-gray-100 text-gray-800 px-2.5 py-1 rounded-md text-xs font-semibold">${member.size}</span>
                     </td>
-                    <!-- เช็คสถานะชำระเงิน (ค่าเสื้อ + ค่าสมัคร) -->
-                    <td class="py-3 px-4 text-center">
-                        <label class="inline-flex items-center cursor-pointer">
-                            <input type="checkbox" ${member.paid ? 'checked' : ''} 
-                                onchange="togglePaid(${realIndex})" 
-                                class="w-5 h-5 text-amber-600 rounded focus:ring-amber-500 border-gray-300 cursor-pointer">
-                            <span class="ml-2 text-xs font-medium ${member.paid ? 'text-amber-600 font-semibold' : 'text-gray-500'}">
-                                ${member.paid ? 'จ่ายแล้ว' : 'ยังไม่จ่าย'}
-                            </span>
-                        </label>
-                    </td>
-                    <!-- เช็คสถานะรับเสื้อ -->
+                    <td class="py-3 px-4 text-center">${paidBadge}</td>
                     <td class="py-3 px-4 text-center">
                         <label class="inline-flex items-center cursor-pointer">
                             <input type="checkbox" ${member.receivedShirt ? 'checked' : ''} 
-                                onchange="toggleReceiveShirt(${realIndex})" 
+                                onchange="toggleField(${realIndex}, 'receivedShirt')" 
                                 class="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300 cursor-pointer">
                             <span class="ml-2 text-xs font-medium ${member.receivedShirt ? 'text-indigo-600 font-semibold' : 'text-gray-500'}">
                                 ${member.receivedShirt ? 'รับแล้ว' : 'ยังไม่รับ'}
                             </span>
                         </label>
                     </td>
-                    <!-- เช็คสถานะคืนซอง -->
                     <td class="py-3 px-4 text-center">
                         <label class="inline-flex items-center cursor-pointer">
                             <input type="checkbox" ${member.returned ? 'checked' : ''} 
-                                onchange="toggleReturn(${realIndex})" 
+                                onchange="toggleField(${realIndex}, 'returned')" 
                                 class="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500 border-gray-300 cursor-pointer">
                             <span class="ml-2 text-xs font-medium ${member.returned ? 'text-emerald-600 font-semibold' : 'text-gray-500'}">
                                 ${member.returned ? 'คืนแล้ว' : 'ยังไม่คืน'}
@@ -169,13 +232,12 @@
             });
         }
 
-        // เพิ่มข้อมูลใหม่ (ดึงค่าจากฟอร์มรวมถึงสถานะการจ่ายเงินด้วย)
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const id = document.getElementById('stdId').value.trim();
             const name = document.getElementById('stdName').value.trim();
             const size = document.getElementById('stdSize').value;
-            const paid = document.getElementById('stdPaid').value === 'true';
+            const paid = document.getElementById('stdPaid').value;
 
             if (members.some(m => m.id === id)) {
                 alert('รหัสนักศึกษานี้มีอยู่ในระบบแล้ว!');
@@ -183,48 +245,92 @@
             }
 
             members.push({ id, name, size, paid, receivedShirt: false, returned: false });
-            saveData();
             renderTable(searchInput.value);
             form.reset();
+            document.getElementById('stdPaid').value = 'paid';
+            await syncToSheets();
         });
 
-        // สลับสถานะชำระเงิน
-        window.togglePaid = function(index) {
-            members[index].paid = !members[index].paid;
-            saveData();
+        window.cyclePaid = async function(index) {
+            if (members[index].paid === 'paid') {
+                members[index].paid = 'half';
+            } else if (members[index].paid === 'half') {
+                members[index].paid = 'unpaid';
+            } else {
+                members[index].paid = 'paid';
+            }
             renderTable(searchInput.value);
+            await syncToSheets();
         }
 
-        // สลับสถานะการรับเสื้อ
-        window.toggleReceiveShirt = function(index) {
-            members[index].receivedShirt = !members[index].receivedShirt;
-            saveData();
+        window.toggleField = async function(index, field) {
+            members[index][field] = !members[index][field];
             renderTable(searchInput.value);
+            await syncToSheets();
         }
 
-        // สลับสถานะการคืนซอง
-        window.toggleReturn = function(index) {
-            members[index].returned = !members[index].returned;
-            saveData();
-            renderTable(searchInput.value);
-        }
-
-        // ลบสมาชิก
-        window.deleteMember = function(index) {
+        window.deleteMember = async function(index) {
             if (confirm(`คุณต้องการลบข้อมูลของ ${members[index].name} หรือไม่?`)) {
                 members.splice(index, 1);
-                saveData();
                 renderTable(searchInput.value);
+                await syncToSheets();
             }
         }
 
-        // ค้นหาแบบเรียลไทม์
+        function openBulkModal() { bulkModal.classList.remove('hidden'); }
+        function closeBulkModal() { bulkModal.classList.add('hidden'); bulkTextarea.value = ''; }
+
+        async function processBulkImport() {
+            const rawText = bulkTextarea.value.trim();
+            const lines = rawText.split('\n');
+            let addedCount = 0;
+
+            lines.forEach(line => {
+                if (!line.trim()) return;
+                const parts = line.split(/,|\t/).map(p => p.trim()).filter(p => p !== '');
+                
+                if (parts.length >= 2) {
+                    const id = parts[0];
+                    const name = parts[1];
+                    let size = 'M';
+                    let paid = 'paid';
+
+                    const fullLine = line.toLowerCase();
+                    if (fullLine.includes('จ่ายค่าเสื้อครึ่ง') || fullLine.includes('half')) {
+                        paid = 'half';
+                    }
+
+                    for (let i = 2; i < parts.length; i++) {
+                        const val = parts[i].toUpperCase();
+                        if (['SS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'].includes(val)) {
+                            size = val;
+                            break;
+                        }
+                    }
+
+                    if (!members.some(m => m.id === id)) {
+                        members.push({ id, name, size, paid, receivedShirt: false, returned: false });
+                        addedCount++;
+                    }
+                }
+            });
+
+            if (addedCount > 0) {
+                renderTable(searchInput.value);
+                closeBulkModal();
+                alert(`นำเข้าสำเร็จ ${addedCount} รายชื่อ กำลังซิงค์ข้อมูลลง Google Sheets...`);
+                await syncToSheets();
+            } else {
+                alert('ไม่พบข้อมูลที่ถูกต้อง กรุณาตรวจสอบรูปแบบการวาง');
+            }
+        }
+
         searchInput.addEventListener('input', (e) => {
             renderTable(e.target.value);
         });
 
-        // โหลดแสดงผลครั้งแรก
-        renderTable();
+        // โหลดข้อมูลเมื่อเปิดหน้าเว็บครั้งแรก
+        fetchMembers();
     </script>
 </body>
 </html>
